@@ -1,10 +1,12 @@
 // ============================================================
 // services/supabase_service.dart
-// Handles Auth (Google OAuth) + Database (Letters, Profiles)
+// Handles Database operations: Letters, Profiles, Officer Notes
 // ============================================================
 
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/constants.dart';
+import '../core/constants/app_constants.dart';
 import '../models/letter_model.dart';
 import '../models/user_profile.dart';
 
@@ -24,22 +26,24 @@ class SupabaseService {
 
   /// Sign in with Google OAuth (opens browser/webview).
   Future<void> signInWithGoogle() async {
-    await _client.auth.signInWithOAuth(
-      OAuthProvider.google,
-      redirectTo: 'io.supabase.rajpatraai://login-callback',
+    await _safeCall(
+      () => _client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'io.supabase.rajpatraai://login-callback',
+      ),
     );
   }
 
   /// Sign out the current user.
   Future<void> signOut() async {
-    await _client.auth.signOut();
+    await _safeCall(() => _client.auth.signOut());
   }
 
   // ── Profile ───────────────────────────────────────────────
 
   /// Fetch or create the user profile from Supabase.
   Future<UserProfile?> fetchProfile(String userId) async {
-    try {
+    return _safeCall(() async {
       final response = await _client
           .from(AppConstants.profilesTable)
           .select()
@@ -48,14 +52,12 @@ class SupabaseService {
 
       if (response == null) return null;
       return UserProfile.fromJson(response);
-    } catch (e) {
-      throw SupabaseServiceException('Failed to fetch profile: $e');
-    }
+    });
   }
 
   /// Upsert (create or update) a user profile.
   Future<UserProfile> upsertProfile(UserProfile profile) async {
-    try {
+    return _safeCall(() async {
       final response = await _client
           .from(AppConstants.profilesTable)
           .upsert(profile.toJson())
@@ -63,32 +65,27 @@ class SupabaseService {
           .single();
 
       return UserProfile.fromJson(response);
-    } catch (e) {
-      throw SupabaseServiceException('Failed to upsert profile: $e');
-    }
+    });
   }
 
   // ── Letters ───────────────────────────────────────────────
 
   /// Fetch all letters for the current user, sorted by date desc.
   Future<List<LetterModel>> fetchHistory({String? searchQuery}) async {
-    try {
+    return _safeCall(() async {
       final userId = currentUser?.id;
       if (userId == null) throw SupabaseServiceException('Not authenticated.');
 
-      var query = _client
+      final response = await _client
           .from(AppConstants.lettersTable)
           .select()
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      final response = await query;
-
       final letters = (response as List<dynamic>)
           .map((json) => LetterModel.fromJson(json as Map<String, dynamic>))
           .toList();
 
-      // Client-side search filter
       if (searchQuery != null && searchQuery.trim().isNotEmpty) {
         final q = searchQuery.toLowerCase();
         return letters
@@ -102,15 +99,12 @@ class SupabaseService {
       }
 
       return letters;
-    } catch (e) {
-      if (e is SupabaseServiceException) rethrow;
-      throw SupabaseServiceException('Failed to fetch history: $e');
-    }
+    });
   }
 
   /// Save a new letter to Supabase.
   Future<LetterModel> saveLetter(LetterModel letter) async {
-    try {
+    return _safeCall(() async {
       final response = await _client
           .from(AppConstants.lettersTable)
           .insert(letter.toJson())
@@ -118,14 +112,12 @@ class SupabaseService {
           .single();
 
       return LetterModel.fromJson(response);
-    } catch (e) {
-      throw SupabaseServiceException('Failed to save letter: $e');
-    }
+    });
   }
 
   /// Update an existing letter.
   Future<LetterModel> updateLetter(LetterModel letter) async {
-    try {
+    return _safeCall(() async {
       final response = await _client
           .from(AppConstants.lettersTable)
           .update({
@@ -139,23 +131,19 @@ class SupabaseService {
           .single();
 
       return LetterModel.fromJson(response);
-    } catch (e) {
-      throw SupabaseServiceException('Failed to update letter: $e');
-    }
+    });
   }
 
   /// Delete a letter by ID.
   Future<void> deleteLetter(String letterId) async {
-    try {
-      await _client.from(AppConstants.lettersTable).delete().eq('id', letterId);
-    } catch (e) {
-      throw SupabaseServiceException('Failed to delete letter: $e');
-    }
+    await _safeCall(
+      () => _client.from(AppConstants.lettersTable).delete().eq('id', letterId),
+    );
   }
 
   /// Fetch a single letter by ID.
   Future<LetterModel?> fetchLetterById(String letterId) async {
-    try {
+    return _safeCall(() async {
       final response = await _client
           .from(AppConstants.lettersTable)
           .select()
@@ -164,14 +152,12 @@ class SupabaseService {
 
       if (response == null) return null;
       return LetterModel.fromJson(response);
-    } catch (e) {
-      throw SupabaseServiceException('Failed to fetch letter: $e');
-    }
+    });
   }
 
   /// Fetch letters created on a specific date (for calendar view).
   Future<List<LetterModel>> fetchLettersByDate(DateTime date) async {
-    try {
+    return _safeCall(() async {
       final userId = currentUser?.id;
       if (userId == null) throw SupabaseServiceException('Not authenticated.');
 
@@ -189,10 +175,156 @@ class SupabaseService {
       return (response as List<dynamic>)
           .map((json) => LetterModel.fromJson(json as Map<String, dynamic>))
           .toList();
+    });
+  }
+
+  // ── Officer Notes ─────────────────────────────────────────
+  // Table schema expected in Supabase:
+  //   officer_notes (
+  //     id          uuid primary key default gen_random_uuid(),
+  //     user_id     uuid references auth.users,
+  //     title       text,
+  //     content     text,
+  //     created_at  timestamptz default now(),
+  //     updated_at  timestamptz default now()
+  //   )
+
+  /// Fetch all notes for the current user.
+  Future<List<OfficerNote>> fetchNotes() async {
+    return _safeCall(() async {
+      final userId = currentUser?.id;
+      if (userId == null) throw SupabaseServiceException('Not authenticated.');
+
+      final response = await _client
+          .from(AppConstants.officerNotesTable)
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      return (response as List<dynamic>)
+          .map((json) => OfficerNote.fromJson(json as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
+  /// Save a new note.
+  Future<OfficerNote> saveNote({
+    required String title,
+    required String content,
+  }) async {
+    return _safeCall(() async {
+      final userId = currentUser?.id;
+      if (userId == null) throw SupabaseServiceException('Not authenticated.');
+
+      final response = await _client
+          .from(AppConstants.officerNotesTable)
+          .insert({
+            'user_id': userId,
+            'title': title,
+            'content': content,
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .select()
+          .single();
+
+      return OfficerNote.fromJson(response);
+    });
+  }
+
+  /// Update an existing note.
+  Future<OfficerNote> updateNote({
+    required String noteId,
+    required String title,
+    required String content,
+  }) async {
+    return _safeCall(() async {
+      final response = await _client
+          .from(AppConstants.officerNotesTable)
+          .update({
+            'title': title,
+            'content': content,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', noteId)
+          .select()
+          .single();
+
+      return OfficerNote.fromJson(response);
+    });
+  }
+
+  /// Delete a note by ID.
+  Future<void> deleteNote(String noteId) async {
+    await _safeCall(
+      () => _client
+          .from(AppConstants.officerNotesTable)
+          .delete()
+          .eq('id', noteId),
+    );
+  }
+
+  // ── Error Handling Helper ─────────────────────────────────
+
+  /// Wraps any Supabase call with network + error detection.
+  /// Throws [SupabaseServiceException] with a user-friendly message.
+  Future<T> _safeCall<T>(Future<T> Function() fn) async {
+    try {
+      return await fn();
+    } on SocketException {
+      throw SupabaseServiceException(
+        'No internet connection. Please check your network and try again.',
+      );
+    } on PostgrestException catch (e) {
+      debugPrint('[Supabase] DB error: ${e.message}');
+      throw SupabaseServiceException('Database error: ${e.message}');
+    } on AuthException catch (e) {
+      debugPrint('[Supabase] Auth error: ${e.message}');
+      throw SupabaseServiceException('Authentication error: ${e.message}');
+    } on SupabaseServiceException {
+      rethrow;
     } catch (e) {
-      throw SupabaseServiceException('Failed to fetch letters by date: $e');
+      debugPrint('[Supabase] Unexpected error: $e');
+      throw SupabaseServiceException('Something went wrong. Please try again.');
     }
   }
+}
+
+// ── Officer Note Model ────────────────────────────────────────
+class OfficerNote {
+  final String id;
+  final String userId;
+  final String title;
+  final String content;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const OfficerNote({
+    required this.id,
+    required this.userId,
+    required this.title,
+    required this.content,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory OfficerNote.fromJson(Map<String, dynamic> json) => OfficerNote(
+    id: json['id'] as String,
+    userId: json['user_id'] as String,
+    title: json['title'] as String,
+    content: json['content'] as String,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    updatedAt: DateTime.parse(json['updated_at'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'user_id': userId,
+    'title': title,
+    'content': content,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
 }
 
 // ── Custom Exception ──────────────────────────────────────────

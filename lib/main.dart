@@ -10,7 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/app_provider.dart';
-import 'core/constants.dart';
+import 'core/constants/app_constants.dart';
 import 'core/theme.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/editor_screen.dart';
@@ -20,10 +20,17 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // ── Supabase Init ──────────────────────────────────────────
-  await Supabase.initialize(
-    url: AppConstants.supabaseUrl,
-    anonKey: AppConstants.supabaseAnonKey,
-  );
+  // Wrapped in try-catch so app doesn't crash if network is unavailable
+  // at startup. Screens handle the offline state gracefully.
+  try {
+    await Supabase.initialize(
+      url: AppConstants.supabaseUrl,
+      anonKey: AppConstants.supabaseAnonKey,
+    );
+  } catch (e) {
+    // Supabase init failed (e.g. bad config). App will run in offline mode.
+    debugPrint('[Supabase] Initialization failed: $e');
+  }
 
   // ── System UI ──────────────────────────────────────────────
   SystemChrome.setSystemUIOverlayStyle(
@@ -35,7 +42,7 @@ Future<void> main() async {
     ),
   );
 
-  SystemChrome.setPreferredOrientations([
+  await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
@@ -61,7 +68,6 @@ class RajpatraApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         routes: {'/editor': (_) => const EditorScreen()},
-        // Go straight to dashboard — no login gate
         home: const DashboardScreen(),
       ),
     );

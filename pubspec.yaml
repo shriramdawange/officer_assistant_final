@@ -1,0 +1,62 @@
+name: officer_assistant
+description: "Rajpatra AI - Officer's Digital Assistant for Government of Maharashtra"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Fonts
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+
+  # State Management
+  provider: ^6.1.2
+
+  # Backend
+  supabase_flutter: ^2.8.4
+
+  # AI / HTTP
+  http: ^1.2.2
+  dio: ^5.7.0
+
+  # Audio Recording
+  record: ^5.1.2
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.4
+  permission_handler: ^11.3.1
+
+  # OCR / Vision
+  google_mlkit_text_recognition: ^0.13.1
+  image_picker: ^1.1.2
+  camera: ^0.11.0+2
+
+  # PDF & Printing
+  pdf: ^3.11.1
+  printing: ^5.13.2
+
+  # Utilities
+  intl: ^0.19.0
+  uuid: ^4.5.1
+  shimmer: ^3.0.0
+  flutter_animate: ^4.5.0
+  lottie: ^3.1.3
+  shared_preferences: ^2.3.3
+  url_launcher: ^6.3.1
+  flutter_svg: ^2.0.10+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/

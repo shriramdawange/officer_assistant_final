@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/app_provider.dart';
 import 'core/constants.dart';
@@ -17,6 +18,12 @@ import 'services/groq_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Supabase Init ──────────────────────────────────────────
+  await Supabase.initialize(
+    url: AppConstants.supabaseUrl,
+    anonKey: AppConstants.supabaseAnonKey,
+  );
 
   // ── System UI ──────────────────────────────────────────────
   SystemChrome.setSystemUIOverlayStyle(

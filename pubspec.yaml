@@ -26,7 +26,7 @@ dependencies:
   dio: ^5.7.0
 
   # Audio Recording
-  record: ^5.1.2
+  record: ^5.2.1
   audioplayers: ^6.1.0
   path_provider: ^2.1.4
   permission_handler: ^11.3.1
